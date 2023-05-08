@@ -1,42 +1,44 @@
-Introduction
+## Introduction
 
-Elasticsearch is a powerful, distributed, RESTful search and analytics engine that can handle large amounts of data in real-time. In this article, we will demonstrate how to set up an Elasticsearch instance using Docker Compose, index data from a CSV file, perform queries using Python’s Elasticsearch library, and visualize the query results using Streamlit.
+The purpose of this interview exercise is to assess your ability to index and query some data in elasticsearch.
 
-Setting Up Elasticsearch with Docker Compose
+Your goal is to ingest a dataset into two elasticsearch indexes then query them smartly to find specific documents.
 
-First, let’s set up an Elasticsearch instance using Docker Compose. Create a `docker-compose.yml` file with the following content:
+Elasticsearch instance could be deploy with a docker-compose file in this github repo. There is no need to customize it, thus you will be able to focus on data ingestion and data querying.
 
-```
-version: '3.8'services:  elasticsearch:    image: docker.elastic.co/elasticsearch/elasticsearch:7.15.0    container_name: elasticsearch    environment:      - node.name=elasticsearch      - cluster.name=es-docker-cluster      - cluster.initial_master_nodes=elasticsearch      - bootstrap.memory_lock=true      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"      - xpack.security.enabled=false      - xpack.security.transport.ssl.enabled=false      - "ELASTIC_PASSWORD=elastic"    ulimits:      memlock:        soft: -1        hard: -1    volumes:      - esdata:/usr/share/elasticsearch/data    ports:      - 9200:9200    networks:      - esnetvolumes:  esdata:    driver: localnetworks:  esnet:
-```
+The result code should be written on Python language (either pure python scripts or jupyter notebook, as you want). Upon completion, please upload your code on a public git repository and add a README that could help us to test your code.  
 
-To start the Elasticsearch container, run the following command in the terminal:
+After the exercise is completed, we will take the time to discuss what has been done. There's not a single way to do things right, and we're aware of that. Please code what you feel would be naturally elegant and simple for you, not what you think we might expect.
 
-```
-docker-compose up
-```
+If you're stuck on something, please reach out to us.
 
-Indexing CSV Data into Elasticsearch with Python
+## Exercise
 
-Now that we have an Elasticsearch instance running, let’s index some data from a CSV file. We will use Python’s `csv` and `elasticsearch` libraries to read the CSV file, preprocess the data, and index it into Elasticsearch. Here's a Python script that demonstrates this process:
+The exercise is divided between the following steps:
 
-```
-from elasticsearch import Elasticsearch, helpersimport csves = Elasticsearch("http://elastic:elastic@localhost:9200")def read_csv(file_path):    with open(file_path, 'r') as f:        reader = csv.DictReader(f)        for row in reader:            yield rowdef preprocess_data(row):    row['dep'] = int(row['dep'])    return rowdef get_index_name(row):    if row['dep'] == 23:        return "dept23"    elif row['dep'] == 48:        return "dept48"def index_data(data, index_name):    actions = [        {            "_op_type": "index",            "_index": index_name,            "_source": preprocess_data(row),        }        for row in data    ]    helpers.bulk(es, actions)dept23_data = [row for row in read_csv('test_dataset.csv') if row['dep'] == '23']dept48_data = [row for row in read_csv('test_dataset.csv') if row['dep'] == '48']index_data(dept23_data, 'dept23')index_data(dept48_data, 'dept48')
-```
+- First, deploy Elasticsearch instance with : `docker-compose up -d` . It will deploy your elasticsearch instance available at [localhost:9200](http://localhost:9200) (login : elastic, password: elastic)
+- Recuperate the dataset in this repo "test_dataset.csv.gz"
+    - This dataset is an extraction from the [French Sirene database representing information about french companies](https://www.data.gouv.fr/fr/datasets/base-sirene-des-entreprises-et-de-leurs-etablissements-siren-siret/). This extraction contains data from two french departments "Creuse (23)" and "Lozere (48)" (about ~40k companies)
+- Find a way to index properly this dataset into Elasticsearch local instance. Data should be ingested into two different indexes (one by departement). Data ingestion could be made by several ways but there is probably ways faster and cleaner than others.
+- Once indexation is done, find a way to query :
+    - All companies in Department 23 where `denominationUniteLegale` **contains** word : `boulanger`
+    - All companies in Department 48 where `activitePrincipaleEtablissement`  **is** `90.01Z`
+    - All companies in Department 23 where `codeCommuneEtablissement` **is** `23079` **or** `23176`
+    - Relevant companies in Departement 48 where terms of query **is** `Théâtre Mende` (NB : Mende is the city capital of Department 48)
+    
 
-Querying Elasticsearch with Python
+## Vocabulary
 
-After indexing the data, we can perform queries using Python’s Elasticsearch library. Here’s an example of how to perform four different queries on the indexed data:
+Datasets contains different columns which can be difficult to interprete. Here is the signification of them :
 
-```
-from elasticsearch import Elasticsearches = Elasticsearch("http://elastic:elastic@localhost:9200")query1 = {    "query": {        "bool": {            "must": [                {"match": {"denominationUniteLegale": "baker"}}            ]        }    }}res1 = es.search(index="dept23", body=query1)print("Results for Query 1:")for hit in res1['hits']['hits']:    print(hit['_source'])query2 = {    "query": {        "bool": {            "must": [                {"match": {"activitePrincipaleEtablissement": "90.01Z"}}            ]        }    }}res2 = es.search(index="dept48", body=query2)print("\nResults for Query 2:")for hit in res2['hits']['hits']:    print(hit['_source'])query3 = {    "query": {        "bool": {            "must": [                {"terms": {"codeCommuneEtablissement": ["23079", "23176"]}}            ]        }    }}res3 = es.search(index="dept23", body=query3)print("\nResults for Query 3:")for hit in res3['hits']['hits']:    print(hit['_source'])query4 = {    "query": {        "bool": {            "must": [                {"match": {"_all": "Theatre Mende"}}            ]        }    }}res4 = es.search(index="dept48", body=query4)print("\nResults for Query 4:")for hit in res4['hits']['hits']:    print(hit['_source'])
-```
-
-1.  Query 1 searches for all companies in department 23 where the `denominationUniteLegale` field contains the word 'baker'. The query results are printed out using a for loop.
-2.  Query 2 searches for all companies in department 48 where the `activitePrincipaleEtablissement` field is equal to '90.01Z'. The query results are printed out with a newline separator.
-3.  Query 3 searches for all companies in department 23 where the `codeCommuneEtablissement` field is either '23079' or '23176'. The query results are printed out with a newline separator.
-4.  Query 4 searches for companies in department 48 with the query terms ‘Theatre Mende’. Note that this query is incorrect, as the `_all` field has been removed in Elasticsearch 6.0 and later. Instead, you should use a `multi_match` query or specify the fields you want to search in.
-
-```
-streamlit run dashboard.py
-```
+- `siren` : French id of a french company
+- `siret` : French id of a french establishment (subdivision of a company)
+- `denominationUniteLegale` : Name of the company
+- `sigleUniteLegale` : Eventual short name of a company
+- `enseigne1Etablissement` : Eventual name of the establishment
+- `activitePrincipaleEtablissement`  : Type of company (types meaning could be found here : [https://www.insee.fr/fr/information/2120875](https://www.insee.fr/fr/information/2120875))
+- `geo_adresse` : Adress of the company
+- `geo_score` : Confidence score of the adress
+- `categorieJuridiqueUniteLegale` : Juridical category of the company
+- `codeCommuneEtablissement` : geographical code of the city hosting the company
+- `dep` : department of the company
